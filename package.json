@@ -15,7 +15,9 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "health": "./scripts/health.sh",
+    "patch:all": "./patch.sh"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

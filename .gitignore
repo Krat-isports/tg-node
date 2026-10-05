@@ -8,3 +8,7 @@ coverage/
 .DS_Store
 .vscode/
 .idea/
+*.sh
+
+# patch script backups
+*.bak.*

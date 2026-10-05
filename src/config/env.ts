@@ -5,6 +5,23 @@ import { z } from 'zod';
  * Centralised, validated environment configuration.
  * The process refuses to boot on invalid config — fail fast, fail loud.
  */
+const booleanish = z
+  .union([z.boolean(), z.string()])
+  .transform((value) => {
+    if (typeof value === "boolean") return value;
+    return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
+  });
+
+const portSchema = z.coerce.number().int().min(1).max(65_535);
+
+/** Honour a platform-assigned PORT (Vercel / Railway / Render / Fly.io ...). */
+const fallbackPort = ((): number => {
+  const raw = process.env.PORT;
+  if (raw === undefined) return 3_000;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 && parsed < 65_536 ? parsed : 3_000;
+})();
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 
@@ -30,6 +47,12 @@ const envSchema = z.object({
       (ids) => ids.every((id) => Number.isSafeInteger(id)),
       'must be a comma separated list of numeric user ids',
     ),
+  // --- HTTP health check ------------------------------------------------
+  HEALTH_ENABLED: booleanish.default(true),
+  HEALTH_HOST: z.string().min(1).default('0.0.0.0'),
+  HEALTH_PORT: portSchema.default(fallbackPort),
+  HEALTH_HEARTBEAT_MS: z.coerce.number().int().min(1_000).default(30_000),
+
 });
 
 const parsed = envSchema.safeParse(process.env);
