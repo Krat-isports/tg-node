@@ -1,4 +1,5 @@
-import type { Bot, BotCommand } from 'grammy';
+import type { Bot } from 'grammy';
+import type { BotCommand } from 'grammy/types';
 import type { BotContext } from '../context.js';
 import { startCommand } from './start.js';
 import { helpCommand } from './help.js';
