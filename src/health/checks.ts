@@ -8,13 +8,8 @@ export type CheckOutcome = {
 };
 
 function baseDetails(): Record<string, unknown> {
-  const mem = process.memoryUsage();
   return {
-    startedAt: new Date(healthState.startedAt).toISOString(),
     uptimeMs: Date.now() - healthState.startedAt,
-    nodeVersion: process.version,
-    environment: env.NODE_ENV,
-    memory: { rssBytes: mem.rss, heapUsedBytes: mem.heapUsed },
   };
 }
 
@@ -32,9 +27,7 @@ export function readinessCheck(): CheckOutcome {
     ...baseDetails(),
     botStatus: healthState.botStatus,
     lastUpdateAt:
-      healthState.lastUpdateAt === null
-        ? null
-        : new Date(healthState.lastUpdateAt).toISOString(),
+      healthState.lastUpdateAt === null ? null : new Date(healthState.lastUpdateAt).toISOString(),
     lastTelegramOkAt:
       healthState.lastTelegramOkAt === null
         ? null
