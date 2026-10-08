@@ -1,5 +1,5 @@
 import { Composer, InlineKeyboard } from 'grammy';
-import { mkdtemp, rm, stat as fsStat } from 'node:fs/promises';
+import { mkdtemp, rm, stat as fsStat, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { BotContext } from '../../context.js';
@@ -198,6 +198,12 @@ async function runDownload(
     await status.set(`⬆️ Uploading as ${kind} (${humanBytes(fileStat.size)})…`, true);
 
     await sendDownloaded(api, chatId, dest, filename, kind);
+
+    // Remove the file from disk the moment the upload completes.
+    await unlink(dest).catch((error: unknown) =>
+      logger.debug({ err: error, dest }, 'failed to unlink temp file after send'),
+    );
+    logger.debug({ dest }, 'temp file deleted after send');
 
     await status.set(
       `✅ Sent as ${kind}\n📄 ${filename}\n📦 ${humanBytes(fileStat.size)}`,
