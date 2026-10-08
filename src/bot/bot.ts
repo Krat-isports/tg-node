@@ -3,6 +3,7 @@ import { env } from '../config/env.js';
 import type { BotContext } from './context.js';
 import { registerCommands, commandMenu } from './commands/index.js';
 import { registerMiddlewares } from './middlewares/index.js';
+import { registerHandlers } from './handlers/index.js';
 
 /** Builds a fully wired bot instance (no side effects, easy to test). */
 export function createBot(): Bot<BotContext> {
@@ -10,6 +11,7 @@ export function createBot(): Bot<BotContext> {
 
   registerMiddlewares(bot);
   registerCommands(bot);
+  registerHandlers(bot);
 
   return bot;
 }
