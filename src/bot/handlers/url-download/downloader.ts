@@ -18,7 +18,10 @@ export async function downloadToFile(
   intervalMs: number,
   signal?: AbortSignal,
 ): Promise<void> {
-  const res = await fetch(url, { redirect: 'follow', signal });
+  const init: RequestInit = { redirect: 'follow' };
+  if (signal) init.signal = signal;
+
+  const res = await fetch(url, init);
   if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
   if (!res.body) throw new Error('Response has no body');
 

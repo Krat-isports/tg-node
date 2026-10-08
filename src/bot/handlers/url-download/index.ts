@@ -35,6 +35,10 @@ function mainKeyboard(): InlineKeyboard {
     .text('❌ Cancel', 'dl:cancel');
 }
 
+function cancelKeyboard(): InlineKeyboard {
+  return new InlineKeyboard().text('❌ Cancel', 'dl:cancel');
+}
+
 async function safeDelete(
   api: BotContext['api'],
   chatId: number,
@@ -47,16 +51,13 @@ async function safeDelete(
 async function beginProbe(
   ctx: BotContext,
   url: string,
-  commandMessageId: number,
+  commandMessageId: number | undefined,
 ): Promise<void> {
   if (ctx.chat?.type !== 'private' || !ctx.from) return;
 
   clearPending(ctx.from.id);
 
-  // Standalone status card — not a reply — so it survives the command deletion.
   const status = await ctx.api.sendMessage(ctx.chat.id, '🔍 Inspecting URL…');
-
-  // Remove the message that triggered the flow (/download … or bare URL).
   await safeDelete(ctx.api, ctx.chat.id, commandMessageId);
 
   try {
@@ -106,6 +107,12 @@ async function beginProbe(
   }
 }
 
+/**
+ * Switch the card into rename mode. Telegram only accepts InlineKeyboardMarkup
+ * in editMessageText (ForceReply is not allowed on edits), so we show the
+ * prompt inline with a Cancel button — the user's next text message is the
+ * new filename.
+ */
 async function promptForFilename(
   api: BotContext['api'],
   chatId: number,
@@ -124,23 +131,11 @@ async function promptForFilename(
   await api
     .editMessageText(chatId, messageId, lines.join('\n'), {
       parse_mode: 'HTML',
-      // Plain object literal — ForceReply is a type in grammy/types, not a
-      // runtime class. This is the exact shape Telegram expects.
-      reply_markup: {
-        force_reply: true,
-        input_field_placeholder: pending.defaultFilename.slice(0, 64),
-        selective: true,
-      },
+      reply_markup: cancelKeyboard(),
     })
     .catch(() => {});
 }
 
-/**
- * Cancel the flow and delete every message we own:
- *   - the status card (already an edit target, so we simply delete it)
- *   - any extra user messages passed in (e.g. the /cancel command itself)
- * The original /download command was already deleted in beginProbe.
- */
 async function cancelPending(
   api: BotContext['api'],
   chatId: number,
@@ -226,7 +221,7 @@ urlDownload.command(['download', 'dl'], async (ctx) => {
     await ctx.reply('Usage: <code>/download &lt;url&gt;</code>', { parse_mode: 'HTML' });
     return;
   }
-  await beginProbe(ctx, url, ctx.message.message_id);
+  await beginProbe(ctx, url, ctx.message?.message_id);
 });
 
 // --- /cancel — deletes every message involved in the flow ----------------
@@ -241,7 +236,7 @@ urlDownload.command('cancel', async (ctx) => {
 
   clearPending(ctx.from.id);
   await cancelPending(ctx.api, pending.chatId, pending.statusMessageId, [
-    ctx.message.message_id,
+    ctx.message?.message_id,
   ]);
 });
 
@@ -289,13 +284,17 @@ urlDownload.callbackQuery(/^dl:(keep|cancel|rename)$/u, async (ctx) => {
 // --- Bare URL message OR filename reply ----------------------------------
 urlDownload.on('message:text', async (ctx, next) => {
   if (ctx.chat.type !== 'private' || !ctx.from) return next();
-  const text = ctx.message.text.trim();
+
+  const msg = ctx.message;
+  if (!msg) return next();
+
+  const text = msg.text.trim();
   if (text.length === 0) return next();
 
   const pending = getPending(ctx.from.id);
 
   if (pending && pending.mode === 'awaiting_filename') {
-    await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id).catch(() => {});
+    await ctx.api.deleteMessage(ctx.chat.id, msg.message_id).catch(() => {});
     const base = sanitizeFilename(text, pending.defaultFilename);
     const filename = ensureExtension(base, pending.contentType);
     clearPending(ctx.from.id);
@@ -305,7 +304,7 @@ urlDownload.on('message:text', async (ctx, next) => {
 
   const match = text.match(URL_RE);
   if (match && match[0].length >= text.length - 3) {
-    await beginProbe(ctx, match[0], ctx.message.message_id);
+    await beginProbe(ctx, match[0], msg.message_id);
     return;
   }
 

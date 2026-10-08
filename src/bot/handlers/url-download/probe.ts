@@ -10,14 +10,20 @@ export type ProbeResult = {
 };
 
 async function fetchHeaders(url: string, signal?: AbortSignal): Promise<Response> {
-  const head = await fetch(url, { method: 'HEAD', redirect: 'follow', signal });
+  const headInit: RequestInit = { method: 'HEAD', redirect: 'follow' };
+  if (signal) headInit.signal = signal;
+
+  const head = await fetch(url, headInit);
   if (head.status !== 405 && head.status !== 501 && head.status !== 403) return head;
-  return fetch(url, {
+
+  const getInit: RequestInit = {
     method: 'GET',
     redirect: 'follow',
-    signal,
     headers: { Range: 'bytes=0-0' },
-  });
+  };
+  if (signal) getInit.signal = signal;
+
+  return fetch(url, getInit);
 }
 
 export async function probeUrl(url: string, signal?: AbortSignal): Promise<ProbeResult> {
