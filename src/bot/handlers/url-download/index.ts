@@ -70,6 +70,7 @@ async function beginProbe(
       url: probe.url,
       contentType: probe.contentType,
       contentLength: probe.contentLength,
+      acceptsRanges: probe.acceptsRanges,
       defaultFilename: probe.suggestedFilename,
       createdAt: Date.now(),
       mode: 'awaiting_filename',
@@ -173,15 +174,17 @@ async function runDownload(
             ? ` (${Math.floor((p.downloaded / p.total) * 100)}%)`
             : '';
         const elapsed = Date.now() - p.startedAt;
+        const modeTag = p.mode === 'parallel' ? ' · parallel' : '';
         const text = [
           '⬇️ Downloading…',
           `📄 ${filename}`,
           `📥 ${humanBytes(p.downloaded)}${totalText}${pct}`,
-          `⏱️ ${humanDuration(elapsed)} · ${humanSpeed(p.downloaded, elapsed)}`,
+          `⏱️ ${humanDuration(elapsed)} · ${humanSpeed(p.downloaded, elapsed)}${modeTag}`,
         ].join('\n');
         void status.set(text);
       },
       PROGRESS_INTERVAL_MS,
+      { total: pending.contentLength, acceptsRanges: pending.acceptsRanges },
     );
 
     const fileStat = await fsStat(dest);

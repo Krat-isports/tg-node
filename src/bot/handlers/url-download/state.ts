@@ -7,6 +7,7 @@ export type PendingDownload = {
   url: string;
   contentType: string;
   contentLength: number | null;
+  acceptsRanges: boolean;
   defaultFilename: string;
   createdAt: number;
   mode: PendingMode;

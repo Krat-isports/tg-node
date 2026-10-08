@@ -7,14 +7,44 @@ export type ProbeResult = {
   contentLength: number | null;
   contentDisposition: string | null;
   suggestedFilename: string;
+  method: 'HEAD' | 'GET';
+  acceptsRanges: boolean;
 };
 
-async function fetchHeaders(url: string, signal?: AbortSignal): Promise<Response> {
+/** "bytes 0-0/12345" → 12345; anything else → null. */
+function parseContentRangeTotal(header: string | null): number | null {
+  if (!header) return null;
+  const m = /\/(\d+)\s*$/u.exec(header.trim());
+  if (!m || !m[1]) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+async function drain(res: Response): Promise<void> {
+  if (!res.body) return;
+  try {
+    await res.body.cancel();
+  } catch {
+    /* ignore */
+  }
+}
+
+async function fetchHeaders(
+  url: string,
+  signal?: AbortSignal,
+): Promise<{ res: Response; method: 'HEAD' | 'GET' }> {
   const headInit: RequestInit = { method: 'HEAD', redirect: 'follow' };
   if (signal) headInit.signal = signal;
 
-  const head = await fetch(url, headInit);
-  if (head.status !== 405 && head.status !== 501 && head.status !== 403) return head;
+  try {
+    const head = await fetch(url, headInit);
+    if (head.ok) return { res: head, method: 'HEAD' };
+    await drain(head);
+    logger.debug({ url, status: head.status }, 'HEAD rejected, retrying with ranged GET');
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    logger.debug({ url, err: error }, 'HEAD failed, retrying with ranged GET');
+  }
 
   const getInit: RequestInit = {
     method: 'GET',
@@ -23,33 +53,46 @@ async function fetchHeaders(url: string, signal?: AbortSignal): Promise<Response
   };
   if (signal) getInit.signal = signal;
 
-  return fetch(url, getInit);
+  const get = await fetch(url, getInit);
+  return { res: get, method: 'GET' };
 }
 
 export async function probeUrl(url: string, signal?: AbortSignal): Promise<ProbeResult> {
-  const res = await fetchHeaders(url, signal);
+  const { res, method } = await fetchHeaders(url, signal);
+
   if (!res.ok && res.status !== 206) {
+    await drain(res);
     throw new Error(`HTTP ${res.status} ${res.statusText}`);
   }
 
   const contentType = res.headers.get('content-type') ?? 'application/octet-stream';
+
+  const rangeTotal = parseContentRangeTotal(res.headers.get('content-range'));
   const lengthHeader = res.headers.get('content-length');
-  const contentLength =
+  const headerLength =
     lengthHeader && /^\d+$/u.test(lengthHeader) ? Number(lengthHeader) : null;
+
+  const contentLength = res.status === 206 ? rangeTotal : headerLength;
+
+  const acceptRangesHeader = (res.headers.get('accept-ranges') ?? '').toLowerCase();
+  const acceptsRanges = res.status === 206 || acceptRangesHeader.includes('bytes');
+
   const contentDisposition = res.headers.get('content-disposition');
   const finalUrl = res.url || url;
   const suggestedFilename = suggestFilename(contentDisposition, finalUrl, contentType);
 
-  if (res.body) {
-    try {
-      await res.body.cancel();
-    } catch {
-      /* ignore */
-    }
-  }
+  await drain(res);
 
   logger.debug(
-    { url: finalUrl, contentType, contentLength, suggestedFilename },
+    {
+      url: finalUrl,
+      method,
+      status: res.status,
+      contentType,
+      contentLength,
+      acceptsRanges,
+      suggestedFilename,
+    },
     'probed url',
   );
 
@@ -59,5 +102,7 @@ export async function probeUrl(url: string, signal?: AbortSignal): Promise<Probe
     contentLength,
     contentDisposition,
     suggestedFilename,
+    method,
+    acceptsRanges,
   };
 }
